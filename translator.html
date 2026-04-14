@@ -1,1 +1,272 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>英文 → 中文 同声传译</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: #f4f4f2; color: #1a1a1a;
+  min-height: 100vh; display: flex;
+  align-items: flex-start; justify-content: center;
+  padding: 2rem 1rem;
+}
+.wrap { width: 100%; max-width: 680px; }
+h1 { font-size: 22px; font-weight: 500; margin-bottom: 4px; }
+.sub { font-size: 13px; color: #999; margin-bottom: 1.5rem; }
+.key-box {
+  background: #fff; border: 1px solid #e0e0da;
+  border-radius: 12px; padding: 1rem 1.25rem; margin-bottom: 1.5rem;
+}
+.key-lbl { font-size: 12px; color: #aaa; margin-bottom: 6px; letter-spacing: 0.04em; }
+.key-row { display: flex; gap: 8px; }
+.key-input {
+  flex: 1; font-size: 13px; padding: 8px 10px;
+  border-radius: 8px; border: 1px solid #e0e0da;
+  background: #fafaf8; color: #1a1a1a; outline: none; font-family: inherit;
+}
+.key-input:focus { border-color: #bbb; }
+.key-btn {
+  font-size: 13px; padding: 8px 16px; border-radius: 8px;
+  border: none; background: #1a1a1a; color: #fff; cursor: pointer;
+}
+.key-btn:hover { background: #333; }
+.key-hint { font-size: 12px; color: #bbb; margin-top: 6px; }
+.key-hint a { color: #3b6fd4; text-decoration: none; }
+.saved { font-size: 12px; color: #3a6e10; margin-top: 5px; display: none; }
 
+.start-btn {
+  width: 100%; padding: 14px; font-size: 16px; font-weight: 500;
+  border-radius: 12px; border: none; background: #1a1a1a; color: #fff;
+  cursor: pointer; margin-bottom: 1.5rem; transition: background 0.15s;
+}
+.start-btn:hover { background: #333; }
+.start-btn.on { background: #c0392b; }
+.start-btn.on:hover { background: #e74c3c; }
+
+.status-bar {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 13px; color: #888; margin-bottom: 1.25rem; display: none;
+}
+.dot {
+  width: 8px; height: 8px; border-radius: 50%; background: #c0392b;
+  animation: blink 1s infinite;
+}
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
+
+.latest {
+  background: #fff; border: 1px solid #e0e0da;
+  border-radius: 12px; padding: 1.25rem; margin-bottom: 1.25rem;
+}
+.latest.done { border-color: #a0c4f0; background: #f0f6fe; }
+.latest-lbl { font-size: 12px; color: #aaa; margin-bottom: 10px; letter-spacing: 0.04em; }
+.latest.done .latest-lbl { color: #3b6fd4; }
+.en-txt { font-size: 14px; color: #666; margin-bottom: 8px; line-height: 1.6; min-height: 22px; }
+.zh-txt { font-size: 17px; color: #1a1a1a; font-weight: 500; line-height: 1.7; min-height: 26px; }
+.en-txt.empty, .zh-txt.empty { color: #ccc; font-style: italic; font-weight: 400; font-size: 13px; }
+.divider { border: none; border-top: 1px solid #e8e8e4; margin: 8px 0; }
+
+.err {
+  font-size: 13px; color: #a33; background: #fceaea;
+  border-radius: 8px; padding: 10px 14px; margin-bottom: 1rem;
+  display: none; line-height: 1.6;
+}
+
+.history { display: none; }
+.history-hd { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.history-lbl { font-size: 12px; color: #aaa; }
+.clr { font-size: 12px; color: #aaa; background: none; border: none; cursor: pointer; }
+.clr:hover { color: #666; }
+.hlist { display: flex; flex-direction: column; gap: 8px; max-height: 300px; overflow-y: auto; }
+.hitem { background: #fff; border: 1px solid #e8e8e4; border-radius: 10px; padding: 10px 12px; }
+.h-en { font-size: 13px; color: #888; margin-bottom: 4px; line-height: 1.5; }
+.h-zh { font-size: 14px; color: #1a1a1a; font-weight: 500; line-height: 1.6; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>英文 → 中文 同声传译</h1>
+  <p class="sub">开启后自动每隔几秒识别英文并翻译成中文，无需按任何按钮</p>
+
+  <div class="key-box">
+    <div class="key-lbl">OPENAI API KEY</div>
+    <div class="key-row">
+      <input class="key-input" type="password" id="keyInput" placeholder="sk-..."/>
+      <button class="key-btn" onclick="saveKey()">保存</button>
+    </div>
+    <div class="key-hint">用于语音识别（Whisper）。<a href="https://platform.openai.com/api-keys" target="_blank">点此免费获取 →</a></div>
+    <div class="saved" id="savedMsg">✓ Key 已保存</div>
+  </div>
+
+  <div class="err" id="errMsg"></div>
+
+  <button class="start-btn" id="startBtn" onclick="toggle()">开启同声传译</button>
+
+  <div class="status-bar" id="statusBar">
+    <div class="dot"></div>
+    <span id="statusTxt">正在录音，自动识别中...</span>
+  </div>
+
+  <div class="latest" id="latestBox">
+    <div class="latest-lbl">当前翻译</div>
+    <div class="en-txt empty" id="enTxt">等待说话...</div>
+    <hr class="divider"/>
+    <div class="zh-txt empty" id="zhTxt">中文翻译显示在这里...</div>
+  </div>
+
+  <div class="history" id="histEl">
+    <div class="history-hd">
+      <div class="history-lbl">翻译记录</div>
+      <button class="clr" onclick="clearHist()">清除</button>
+    </div>
+    <div class="hlist" id="hList"></div>
+  </div>
+</div>
+
+<script>
+let oaiKey = '';
+let isOn = false;
+let mediaRecorder = null;
+let audioChunks = [];
+let stream = null;
+let recordInterval = null;
+let history = [];
+const INTERVAL = 5000; // 每5秒识别一次
+
+function saveKey() {
+  const v = document.getElementById('keyInput').value.trim();
+  if (!v.startsWith('sk-') || v.length < 20) {
+    showErr('请输入有效的 OpenAI API Key（以 sk- 开头）');
+    return;
+  }
+  oaiKey = v;
+  document.getElementById('savedMsg').style.display = 'block';
+  hideErr();
+}
+
+async function toggle() {
+  if (isOn) stop();
+  else await start();
+}
+
+async function start() {
+  if (!oaiKey) { showErr('请先输入并保存 OpenAI API Key'); return; }
+  hideErr();
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch(e) {
+    showErr('无法获取麦克风权限：' + e.message + '。请在浏览器地址栏左侧点击锁头图标，允许麦克风访问。');
+    return;
+  }
+  isOn = true;
+  document.getElementById('startBtn').textContent = '停止传译';
+  document.getElementById('startBtn').className = 'start-btn on';
+  document.getElementById('statusBar').style.display = 'flex';
+  startChunk();
+  recordInterval = setInterval(restartChunk, INTERVAL);
+}
+
+function stop() {
+  isOn = false;
+  clearInterval(recordInterval);
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  mediaRecorder = null; stream = null; audioChunks = [];
+  document.getElementById('startBtn').textContent = '开启同声传译';
+  document.getElementById('startBtn').className = 'start-btn';
+  document.getElementById('statusBar').style.display = 'none';
+  document.getElementById('statusTxt').textContent = '正在录音，自动识别中...';
+}
+
+function startChunk() {
+  if (!stream) return;
+  audioChunks = [];
+  mediaRecorder = new MediaRecorder(stream);
+  mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
+  mediaRecorder.onstop = () => processChunk([...audioChunks]);
+  mediaRecorder.start();
+}
+
+function restartChunk() {
+  if (!isOn || !mediaRecorder) return;
+  if (mediaRecorder.state === 'recording') mediaRecorder.stop();
+  setTimeout(() => { if (isOn && stream) startChunk(); }, 100);
+}
+
+async function processChunk(chunks) {
+  if (!chunks.length || !oaiKey) return;
+  const blob = new Blob(chunks, { type: 'audio/webm' });
+  if (blob.size < 1000) return; // 太短跳过
+
+  document.getElementById('statusTxt').textContent = '识别中...';
+  try {
+    const fd = new FormData();
+    fd.append('file', blob, 'audio.webm');
+    fd.append('model', 'whisper-1');
+    fd.append('language', 'en');
+
+    const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + oaiKey },
+      body: fd
+    });
+    if (!res.ok) { const e = await res.json(); throw new Error(e.error?.message || res.status); }
+    const data = await res.json();
+    const en = data.text?.trim();
+    if (!en) { document.getElementById('statusTxt').textContent = '正在录音，自动识别中...'; return; }
+
+    setEnTxt(en);
+    document.getElementById('statusTxt').textContent = '翻译中...';
+    await translate(en);
+  } catch(e) {
+    showErr('识别出错：' + e.message);
+  }
+  if (isOn) document.getElementById('statusTxt').textContent = '正在录音，自动识别中...';
+}
+
+async function translate(en) {
+  try {
+    const url = 'https://api.mymemory.translated.net/get?q=' + encodeURIComponent(en) + '&langpair=en|zh';
+    const res = await fetch(url);
+    const data = await res.json();
+    const zh = data.responseData?.translatedText;
+    if (zh && data.responseStatus === 200) {
+      setZhTxt(zh);
+      document.getElementById('latestBox').className = 'latest done';
+      addHistory(en, zh);
+    }
+  } catch(e) {
+    setZhTxt('翻译失败');
+  }
+}
+
+function setEnTxt(t) {
+  const el = document.getElementById('enTxt');
+  el.textContent = t; el.className = 'en-txt';
+}
+function setZhTxt(t) {
+  const el = document.getElementById('zhTxt');
+  el.textContent = t; el.className = 'zh-txt';
+}
+
+function addHistory(en, zh) {
+  history.unshift({ en, zh });
+  if (history.length > 50) history.pop();
+  const el = document.getElementById('histEl');
+  el.style.display = '';
+  document.getElementById('hList').innerHTML = history.map(h =>
+    `<div class="hitem"><div class="h-en">${h.en}</div><div class="h-zh">${h.zh}</div></div>`
+  ).join('');
+}
+function clearHist() {
+  history = [];
+  document.getElementById('histEl').style.display = 'none';
+  document.getElementById('hList').innerHTML = '';
+}
+function showErr(msg) { const e = document.getElementById('errMsg'); e.textContent = msg; e.style.display = ''; }
+function hideErr() { document.getElementById('errMsg').style.display = 'none'; }
+</script>
+</body>
+</html>
