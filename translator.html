@@ -15,29 +15,9 @@ body {
 }
 .wrap { width: 100%; max-width: 680px; }
 h1 { font-size: 22px; font-weight: 500; margin-bottom: 4px; }
-.sub { font-size: 13px; color: #999; margin-bottom: 1.5rem; }
-.key-box {
-  background: #fff; border: 1px solid #e0e0da;
-  border-radius: 12px; padding: 1rem 1.25rem; margin-bottom: 1.5rem;
-}
-.key-lbl { font-size: 12px; color: #aaa; margin-bottom: 6px; letter-spacing: 0.04em; }
-.key-row { display: flex; gap: 8px; }
-.key-input {
-  flex: 1; font-size: 13px; padding: 8px 10px;
-  border-radius: 8px; border: 1px solid #e0e0da;
-  background: #fafaf8; color: #1a1a1a; outline: none; font-family: inherit;
-}
-.key-input:focus { border-color: #bbb; }
-.key-btn {
-  font-size: 13px; padding: 8px 16px; border-radius: 8px;
-  border: none; background: #1a1a1a; color: #fff; cursor: pointer;
-}
-.key-btn:hover { background: #333; }
-.key-hint { font-size: 12px; color: #bbb; margin-top: 6px; }
-.key-hint a { color: #3b6fd4; text-decoration: none; }
-.saved { font-size: 12px; color: #3a6e10; margin-top: 5px; display: none; }
+.sub { font-size: 13px; color: #999; margin-bottom: 2rem; }
 .start-btn {
-  width: 100%; padding: 14px; font-size: 16px; font-weight: 500;
+  width: 100%; padding: 16px; font-size: 16px; font-weight: 500;
   border-radius: 12px; border: none; background: #1a1a1a; color: #fff;
   cursor: pointer; margin-bottom: 1.5rem; transition: background 0.15s;
 }
@@ -57,8 +37,8 @@ h1 { font-size: 22px; font-weight: 500; margin-bottom: 4px; }
 .latest.done { border-color: #a0c4f0; background: #f0f6fe; }
 .latest-lbl { font-size: 12px; color: #aaa; margin-bottom: 10px; letter-spacing: 0.04em; }
 .latest.done .latest-lbl { color: #3b6fd4; }
-.en-txt { font-size: 14px; color: #666; margin-bottom: 8px; line-height: 1.6; min-height: 22px; }
-.zh-txt { font-size: 17px; color: #1a1a1a; font-weight: 500; line-height: 1.7; min-height: 26px; }
+.en-txt { font-size: 14px; color: #555; margin-bottom: 8px; line-height: 1.6; min-height: 22px; }
+.zh-txt { font-size: 18px; color: #1a1a1a; font-weight: 500; line-height: 1.7; min-height: 28px; }
 .en-txt.empty, .zh-txt.empty { color: #ccc; font-style: italic; font-weight: 400; font-size: 13px; }
 .divider { border: none; border-top: 1px solid #e8e8e4; margin: 8px 0; }
 .err {
@@ -66,7 +46,7 @@ h1 { font-size: 22px; font-weight: 500; margin-bottom: 4px; }
   border-radius: 8px; padding: 10px 14px; margin-bottom: 1rem;
   display: none; line-height: 1.6;
 }
-.history { display: none; }
+.history { display: none; margin-top: 0.5rem; }
 .history-hd { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
 .history-lbl { font-size: 12px; color: #aaa; }
 .clr { font-size: 12px; color: #aaa; background: none; border: none; cursor: pointer; }
@@ -80,17 +60,7 @@ h1 { font-size: 22px; font-weight: 500; margin-bottom: 4px; }
 <body>
 <div class="wrap">
   <h1>英文 → 中文 同声传译</h1>
-  <p class="sub">开启后自动每隔几秒识别英文并翻译成中文，无需按任何按钮</p>
-
-  <div class="key-box">
-    <div class="key-lbl">ANTHROPIC API KEY</div>
-    <div class="key-row">
-      <input class="key-input" type="password" id="keyInput" placeholder="sk-ant-..."/>
-      <button class="key-btn" onclick="saveKey()">保存</button>
-    </div>
-    <div class="key-hint">用于语音识别和翻译。<a href="https://console.anthropic.com/settings/keys" target="_blank">点此获取 →</a></div>
-    <div class="saved" id="savedMsg">✓ Key 已保存</div>
-  </div>
+  <p class="sub">完全免费 · 无需任何 API Key · 说英文自动翻译成中文</p>
 
   <div class="err" id="errMsg"></div>
 
@@ -98,7 +68,7 @@ h1 { font-size: 22px; font-weight: 500; margin-bottom: 4px; }
 
   <div class="status-bar" id="statusBar">
     <div class="dot"></div>
-    <span id="statusTxt">正在录音，自动识别中...</span>
+    <span id="statusTxt">正在监听，请说英文...</span>
   </div>
 
   <div class="latest" id="latestBox">
@@ -118,222 +88,99 @@ h1 { font-size: 22px; font-weight: 500; margin-bottom: 4px; }
 </div>
 
 <script>
-let antKey = '';
+let sr = null;
 let isOn = false;
-let mediaRecorder = null;
-let audioChunks = [];
-let stream = null;
-let recordInterval = null;
 let history = [];
-const INTERVAL = 5000;
+let translateTimer = null;
 
-function saveKey() {
-  const v = document.getElementById('keyInput').value.trim();
-  if (!v.startsWith('sk-ant-') || v.length < 20) {
-    showErr('请输入有效的 Anthropic API Key（以 sk-ant- 开头）');
-    return;
-  }
-  antKey = v;
-  document.getElementById('savedMsg').style.display = 'block';
-  hideErr();
-}
-
-async function toggle() {
+function toggle() {
   if (isOn) stop();
-  else await start();
+  else start();
 }
 
-async function start() {
-  if (!antKey) { showErr('请先输入并保存 Anthropic API Key'); return; }
-  hideErr();
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  } catch(e) {
-    showErr('无法获取麦克风权限：' + e.message + '。请点击地址栏左侧锁头图标，允许麦克风访问。');
+function start() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) {
+    showErr('此浏览器不支持语音识别，请使用 Chrome 浏览器');
     return;
   }
-  isOn = true;
-  document.getElementById('startBtn').textContent = '停止传译';
-  document.getElementById('startBtn').className = 'start-btn on';
-  document.getElementById('statusBar').style.display = 'flex';
-  startChunk();
-  recordInterval = setInterval(restartChunk, INTERVAL);
+  hideErr();
+  sr = new SR();
+  sr.lang = 'en-AU';
+  sr.continuous = true;
+  sr.interimResults = true;
+
+  sr.onstart = () => {
+    isOn = true;
+    document.getElementById('startBtn').textContent = '停止传译';
+    document.getElementById('startBtn').className = 'start-btn on';
+    document.getElementById('statusBar').style.display = 'flex';
+    document.getElementById('statusTxt').textContent = '正在监听，请说英文...';
+  };
+
+  sr.onresult = (e) => {
+    let interim = '', final = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const t = e.results[i][0].transcript;
+      if (e.results[i].isFinal) final += t;
+      else interim += t;
+    }
+    const display = final || interim;
+    if (display) setEnTxt(display);
+    if (final) {
+      clearTimeout(translateTimer);
+      doTranslate(final);
+    } else if (interim) {
+      clearTimeout(translateTimer);
+      translateTimer = setTimeout(() => doTranslate(interim), 1200);
+    }
+  };
+
+  sr.onerror = (e) => {
+    if (e.error === 'not-allowed') {
+      showErr('麦克风权限被拒绝，请点击地址栏左边的锁头图标，把麦克风改为允许，然后刷新页面。');
+      stop();
+    } else if (e.error !== 'no-speech') {
+      showErr('语音识别出错：' + e.error);
+    }
+  };
+
+  sr.onend = () => {
+    if (isOn) try { sr.start(); } catch(e) {}
+  };
+
+  try { sr.start(); }
+  catch(e) { showErr('启动失败：' + e.message); }
 }
 
 function stop() {
   isOn = false;
-  clearInterval(recordInterval);
-  if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
-  if (stream) stream.getTracks().forEach(t => t.stop());
-  mediaRecorder = null; stream = null; audioChunks = [];
+  if (sr) { sr.onend = null; sr.stop(); sr = null; }
   document.getElementById('startBtn').textContent = '开启同声传译';
   document.getElementById('startBtn').className = 'start-btn';
   document.getElementById('statusBar').style.display = 'none';
 }
 
-function startChunk() {
-  if (!stream) return;
-  audioChunks = [];
-  mediaRecorder = new MediaRecorder(stream);
-  mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
-  mediaRecorder.onstop = () => processChunk([...audioChunks]);
-  mediaRecorder.start();
-}
-
-function restartChunk() {
-  if (!isOn || !mediaRecorder) return;
-  if (mediaRecorder.state === 'recording') mediaRecorder.stop();
-  setTimeout(() => { if (isOn && stream) startChunk(); }, 100);
-}
-
-async function processChunk(chunks) {
-  if (!chunks.length || !antKey) return;
-  const blob = new Blob(chunks, { type: 'audio/webm' });
-  if (blob.size < 1000) return;
-
-  document.getElementById('statusTxt').textContent = '识别中...';
-
+async function doTranslate(text) {
+  if (!text.trim()) return;
+  document.getElementById('statusTxt').textContent = '翻译中...';
+  document.getElementById('latestBox').className = 'latest';
   try {
-    // 把音频转成 base64
-    const base64 = await blobToBase64(blob);
-
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': antKey,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1000,
-        messages: [{
-          role: 'user',
-          content: [
-            {
-              type: 'document',
-              source: {
-                type: 'base64',
-                media_type: 'audio/webm',
-                data: base64
-              }
-            },
-            {
-              type: 'text',
-              text: '这是一段英文录音。请先转录出英文原文，然后翻译成中文。严格按照以下格式输出，不要其他任何内容：\nEN: [英文原文]\nZH: [中文翻译]'
-            }
-          ]
-        }]
-      })
-    });
-
-    if (!response.ok) {
-      const err = await response.json();
-      // Claude不支持音频，改用纯文字提示方案
-      if (err.error?.message?.includes('audio') || response.status === 400) {
-        await fallbackTranslate();
-        return;
-      }
-      throw new Error(err.error?.message || response.status);
-    }
-
-    const data = await response.json();
-    const text = data.content?.[0]?.text || '';
-    const enMatch = text.match(/EN:\s*(.+)/);
-    const zhMatch = text.match(/ZH:\s*(.+)/);
-
-    if (enMatch && zhMatch) {
-      const en = enMatch[1].trim();
-      const zh = zhMatch[1].trim();
-      setEnTxt(en);
-      setZhTxt(zh);
-      document.getElementById('latestBox').className = 'latest done';
-      addHistory(en, zh);
-    }
-  } catch(e) {
-    showErr('出错：' + e.message);
-  }
-
-  if (isOn) document.getElementById('statusTxt').textContent = '正在录音，自动识别中...';
-}
-
-async function fallbackTranslate() {
-  // Claude不支持音频输入，改用浏览器语音识别+Claude翻译
-  document.getElementById('statusTxt').textContent = '切换到浏览器识别模式...';
-  showErr('Claude 暂不支持直接处理音频，已自动切换到浏览器语音识别 + Claude 翻译模式。');
-  stop();
-  startBrowserSR();
-}
-
-let sr = null;
-function startBrowserSR() {
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SR) { showErr('浏览器不支持语音识别，请换用 Chrome'); return; }
-  sr = new SR();
-  sr.lang = 'en-AU';
-  sr.continuous = true;
-  sr.interimResults = false;
-  sr.onstart = () => {
-    document.getElementById('startBtn').textContent = '停止传译';
-    document.getElementById('startBtn').className = 'start-btn on';
-    document.getElementById('statusBar').style.display = 'flex';
-    document.getElementById('statusTxt').textContent = '浏览器识别中，请说英文...';
-    isOn = true;
-  };
-  sr.onresult = async (e) => {
-    const text = e.results[e.results.length - 1][0].transcript.trim();
-    if (!text) return;
-    setEnTxt(text);
-    document.getElementById('statusTxt').textContent = '翻译中...';
-    await claudeTranslate(text);
-    document.getElementById('statusTxt').textContent = '浏览器识别中，请说英文...';
-  };
-  sr.onerror = (e) => {
-    if (e.error !== 'no-speech') showErr('语音识别出错：' + e.error);
-  };
-  sr.onend = () => { if (isOn) try { sr.start(); } catch(e) {} };
-  sr.start();
-
-  document.getElementById('startBtn').onclick = () => {
-    if (isOn) { isOn = false; sr.onend = null; sr.stop(); document.getElementById('startBtn').textContent = '开启同声传译'; document.getElementById('startBtn').className = 'start-btn'; document.getElementById('statusBar').style.display = 'none'; }
-    else { isOn = true; sr.start(); }
-  };
-}
-
-async function claudeTranslate(en) {
-  try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': antKey,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 500,
-        messages: [{ role: 'user', content: '将以下英文翻译成中文，只返回翻译结果：\n\n' + en }]
-      })
-    });
+    const url = 'https://api.mymemory.translated.net/get?q=' + encodeURIComponent(text) + '&langpair=en|zh';
+    const res = await fetch(url);
     const data = await res.json();
-    const zh = data.content?.[0]?.text?.trim() || '';
-    if (zh) {
+    const zh = data.responseData?.translatedText;
+    if (zh && data.responseStatus === 200) {
       setZhTxt(zh);
       document.getElementById('latestBox').className = 'latest done';
-      addHistory(en, zh);
+      addHistory(text, zh);
+    } else {
+      setZhTxt('翻译失败，请重试');
     }
   } catch(e) {
-    setZhTxt('翻译失败：' + e.message);
+    setZhTxt('网络错误');
   }
-}
-
-function blobToBase64(blob) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result.split(',')[1]);
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
+  if (isOn) document.getElementById('statusTxt').textContent = '正在监听，请说英文...';
 }
 
 function setEnTxt(t) {
